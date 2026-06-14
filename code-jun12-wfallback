@@ -203,82 +203,17 @@ else if(operation.equalsIgnoreCase("Modify") && null!=nativeIdentity) {
         throw new Exception("No existing role found to replace");
     }
 
-    // FALLBACK: if no divisions were selected in the form,
-    // reuse the divisions the user already has on the account
-    if(divisions.isEmpty() && null!=identityObject) {
-        Object existingDiv = getAttributeFromExistingLink(identityObject, application, nativeIdentity, "division");
-
-        List existingDivList = new ArrayList();
-        if(existingDiv instanceof String) {
-            existingDivList.add(existingDiv);
-        } else if(existingDiv instanceof List) {
-            existingDivList.addAll(existingDiv);
-        }
-        logger.error("**Existing divisions on account: " + existingDivList);
-
-        // turn each existing value into a key the divisionMap understands
-        for(String existing : existingDivList) {
-            if(divisionMap.containsKey(existing)) {
-                divisions.add(existing);
-            } else {
-                for(Object key : divisionMap.keySet()) {
-                    Object val = divisionMap.get(key);
-                    if(val instanceof String && val.equals(existing)) {
-                        divisions.add(key);
-                        break;
-                    }
-                }
-            }
-        }
-        logger.error("**Divisions after fallback: " + divisions);
-    }
-
+    // Fill the NEW_ROLE_ID placeholder in the Add Entitlement body (just like EXISTING_ROLE_ID in the URL)
+    logger.error("**roleList in Modify branch: " + roleList);
     if(null!=roleList && roleList.size()>0) {
-        List groupItemsList = new ArrayList();
-        Map groupMap = new HashMap();
-        groupMap.put("groupId",groupId);
-        groupMap.put("groupName",groupName);
-        groupMap.put("groupType","APP");
-        Map mainAppGroupItemMap = new HashMap();
-        mainAppGroupItemMap.put("group",groupMap);
-        mainAppGroupItemMap.put("roles",roleList);
-        groupItemsList.add(mainAppGroupItemMap);
-        if(divisions.size()>0) {
-            for(String division:divisions) {
-                if(division.equalsIgnoreCase("All Divisions")) {
-                    List divisionValues = divisionMap.get(division);
-                    for(String eachdiv:divisionValues) {
-                        List paramList = Arrays.asList(eachdiv.split("\\|"));
-                        Map divGroup = new HashMap();
-                        divGroup.put("groupId",paramList.get(0));
-                        divGroup.put("groupName",paramList.get(1));
-                        divGroup.put("groupType",paramList.get(3));
-                        Map subGroupItem = new HashMap();
-                        subGroupItem.put("group",divGroup);
-                        subGroupItem.put("roles",roleList);
-                        groupItemsList.add(subGroupItem);
-                    }
-                    break;
-                } else {
-                    String divisionValue = divisionMap.get(division);
-                    List paramList = Arrays.asList(divisionValue.split("\\|"));
-                    Map divGroup = new HashMap();
-                    divGroup.put("groupId",paramList.get(0));
-                    divGroup.put("groupName",paramList.get(1));
-                    divGroup.put("groupType",paramList.get(3));
-                    Map subGroupItem = new HashMap();
-                    subGroupItem.put("group",divGroup);
-                    subGroupItem.put("roles",roleList);
-                    groupItemsList.add(subGroupItem);
-                }
-            }
+        String newRoleId = roleList.get(0).get("roleId");
+        Map bodyMap = requestEndPoint.getBody();
+        if(null!=bodyMap && null!=bodyMap.get("jsonBody")) {
+            String body = (String) bodyMap.get("jsonBody");
+            body = body.replace("NEW_ROLE_ID", newRoleId);
+            bodyMap.replace("jsonBody", body);
+            requestEndPoint.setBody(bodyMap);
         }
-        Map updatedMap = new HashMap();
-        updatedMap.put("groupItems",groupItemsList);
-        String updatedBody = JsonUtil.toJson(updatedMap);
-        Map jsonBodyMap = new HashMap();
-        jsonBodyMap.put("jsonBody",updatedBody);
-        requestEndPoint.setBody(jsonBodyMap);
     }
 }
 
