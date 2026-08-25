@@ -1,0 +1,213 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Rule PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Rule language="beanshell" name="Split Entitlement Profiles" type="Generic">
+
+  <Description>
+    Splits role profiles that hold several entitlement values into one
+    profile per value, so that a Role Composition certification produces
+    one reviewable row per entitlement.
+
+    DRY RUN BY DEFAULT. It reports what it would change and saves nothing
+    until DRY_RUN is set to false.
+
+    THIS CODE HAS NOT BEEN COMPILED OR EXECUTED AGAINST IDENTITYIQ.
+    Run it in a sandbox, in dry run, and check the report before you let
+    it write anything.
+  </Description>
+
+  <Source><![CDATA[
+
+  import sailpoint.object.Bundle;
+  import sailpoint.object.Profile;
+  import sailpoint.object.Filter;
+  import sailpoint.object.QueryOptions;
+  import sailpoint.tools.Util;
+  import java.util.ArrayList;
+  import java.util.Collection;
+  import java.util.Collections;
+  import java.util.Iterator;
+  import java.util.List;
+
+  /* ------------------------------------------------------------------ *
+   *  SETTINGS                                                          *
+   * ------------------------------------------------------------------ */
+
+  /* false actually writes. Leave true until the report looks right. */
+  boolean DRY_RUN = true;
+
+  /* Restrict to one role while testing. null = EVERY role.
+     ALWAYS name a single test role for the first run, then widen. */
+  String ONLY_ROLE = "Role-Composition-Test Role";
+
+  /* Safety brake. The run stops after this many roles are changed.
+     Raise it deliberately: 1 -> 10 -> 100 -> 100000, checking after each. */
+  int MAX_ROLES = 1;
+
+  /* Write a description on each new profile, e.g. "1234 - Administrators
+     + PWCHFSSGFTP01". This is what shows in the certification's Profile
+     Description column. Set false to leave descriptions empty. */
+  boolean SET_DESCRIPTION = true;
+
+  /* true  : each new profile keeps the original operation with a
+             one-element list, e.g. "contains all of [A]".
+     false : each new profile uses a simple equals, e.g. "= A".
+     Keep true. It stays closer to the original meaning. */
+  boolean PRESERVE_OPERATION = true;
+
+  /* ------------------------------------------------------------------ */
+
+  List report = new ArrayList();
+  int rolesChanged = 0;
+  int profilesCreated = 0;
+  int profilesRemoved = 0;
+
+  /* Build a single-value filter that mirrors the original operation. */
+  Filter singleValueFilter(Filter.LeafFilter lf, Object value) {
+      if (PRESERVE_OPERATION) {
+          try {
+              return Filter.containsAll(lf.getProperty(),
+                                        Collections.singletonList(value));
+          } catch (Throwable t) {
+              /* older/newer API - fall through to equals */
+          }
+      }
+      return Filter.eq(lf.getProperty(), value);
+  }
+
+  /* Values held by a leaf filter, or null if it is not a multi-value
+     filter we know how to split. */
+  List splittableValues(Filter f) {
+      if (!(f instanceof Filter.LeafFilter)) { return null; }
+      Filter.LeafFilter lf = (Filter.LeafFilter) f;
+      Object v = lf.getValue();
+      if (!(v instanceof Collection)) { return null; }
+      List vals = new ArrayList((Collection) v);
+      if (vals.size() < 2) { return null; }    /* already single-valued */
+      return vals;
+  }
+
+  /* ---------------- find candidate roles ---------------- */
+
+  QueryOptions qo = new QueryOptions();
+  if (ONLY_ROLE != null && ONLY_ROLE.length() > 0) {
+      qo.addFilter(Filter.eq("name", ONLY_ROLE));
+  }
+
+  List roleIds = new ArrayList();
+  Iterator ids = context.search(Bundle.class, qo, "id");
+  while (ids.hasNext()) {
+      roleIds.add(((Object[]) ids.next())[0]);
+  }
+  Util.flushIterator(ids);
+
+  report.add("Roles examined: " + roleIds.size());
+
+  /* ---------------- process one role at a time ---------------- */
+
+  for (int r = 0; r < roleIds.size(); r++) {
+
+      if (rolesChanged >= MAX_ROLES) {
+          report.add("STOPPED: MAX_ROLES (" + MAX_ROLES + ") reached.");
+          break;
+      }
+
+      Bundle role = (Bundle) context.getObjectById(Bundle.class,
+                                                   (String) roleIds.get(r));
+      if (role == null) { continue; }
+
+      List profiles = role.getProfiles();
+      if (profiles == null || profiles.isEmpty()) {
+          context.decache(role);
+          continue;
+      }
+
+      List toAdd = new ArrayList();
+      List toRemove = new ArrayList();
+
+      for (int p = 0; p < profiles.size(); p++) {
+          Profile prof = (Profile) profiles.get(p);
+
+          /* Skip anything we cannot split safely. */
+          if (prof.getPermissions() != null && !prof.getPermissions().isEmpty()) {
+              report.add("  SKIP profile with permissions on role " + role.getName());
+              continue;
+          }
+          List constraints = prof.getConstraints();
+          if (constraints == null || constraints.size() != 1) {
+              /* 0 constraints = nothing to split.
+                 2+ constraints = the AND/OR between them would be lost. */
+              if (constraints != null && constraints.size() > 1) {
+                  report.add("  SKIP profile with " + constraints.size()
+                             + " constraints on role " + role.getName()
+                             + " (splitting would change its meaning)");
+              }
+              continue;
+          }
+
+          Filter f = (Filter) constraints.get(0);
+          List vals = splittableValues(f);
+          if (vals == null) { continue; }
+
+          Filter.LeafFilter lf = (Filter.LeafFilter) f;
+
+          report.add("  Role '" + role.getName() + "': profile on "
+                     + (prof.getApplication() != null
+                        ? prof.getApplication().getName() : "?")
+                     + " holds " + vals.size() + " values -> "
+                     + vals.size() + " profiles");
+
+          for (int v = 0; v < vals.size(); v++) {
+              Object value = vals.get(v);
+
+              Profile np = new Profile();
+              np.setApplication(prof.getApplication());
+              if (SET_DESCRIPTION) {
+                  np.setDescription(
+                      (prof.getApplication() != null
+                         ? prof.getApplication().getName() : "")
+                      + " - " + String.valueOf(value));
+              }
+
+              List nc = new ArrayList();
+              nc.add(singleValueFilter(lf, value));
+              np.setConstraints(nc);
+
+              toAdd.add(np);
+              report.add("      + " + String.valueOf(value));
+          }
+
+          toRemove.add(prof);
+      }
+
+      if (!toAdd.isEmpty()) {
+          if (DRY_RUN) {
+              report.add("  [dry run] no changes saved for " + role.getName());
+          } else {
+              for (int i = 0; i < toRemove.size(); i++) {
+                  role.remove((Profile) toRemove.get(i));
+              }
+              for (int i = 0; i < toAdd.size(); i++) {
+                  role.add((Profile) toAdd.get(i));
+              }
+              context.saveObject(role);
+              context.commitTransaction();
+              report.add("  SAVED " + role.getName());
+          }
+          rolesChanged++;
+          profilesCreated += toAdd.size();
+          profilesRemoved += toRemove.size();
+      }
+
+      context.decache(role);
+  }
+
+  report.add("");
+  report.add("DRY_RUN            : " + DRY_RUN);
+  report.add("Roles changed      : " + rolesChanged);
+  report.add("Profiles created   : " + profilesCreated);
+  report.add("Profiles removed   : " + profilesRemoved);
+
+  return Util.listToCsv(report).replaceAll(",", "\n");
+
+  ]]></Source>
+</Rule>
