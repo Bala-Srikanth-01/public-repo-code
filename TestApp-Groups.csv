@@ -1,0 +1,5 @@
+groupName,displayName,description,owner
+TestGroupA,Test Group A,First entitlement for role composition testing,spadmin
+TestGroupB,Test Group B,Second entitlement for role composition testing,spadmin
+TestGroupC,Test Group C,Third entitlement for role composition testing,spadmin
+TestGroupD,Test Group D,Extra entitlement not used by the test role,spadmin

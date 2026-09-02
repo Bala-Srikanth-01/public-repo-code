@@ -1,0 +1,9 @@
+accountId,accountName,firstName,lastName,email,department,status,EntitlementValue
+tuser001,tuser001,Test,UserOne,tuser001@example.com,Finance,active,TestGroupA
+tuser002,tuser002,Test,UserTwo,tuser002@example.com,Finance,active,TestGroupA;TestGroupB
+tuser003,tuser003,Test,UserThree,tuser003@example.com,Finance,active,TestGroupA;TestGroupB;TestGroupC
+tuser004,tuser004,Test,UserFour,tuser004@example.com,IT,active,TestGroupB
+tuser005,tuser005,Test,UserFive,tuser005@example.com,IT,active,TestGroupC
+tuser006,tuser006,Test,UserSix,tuser006@example.com,IT,active,TestGroupA;TestGroupC
+tuser007,tuser007,Test,UserSeven,tuser007@example.com,HR,active,
+tuser008,tuser008,Test,UserEight,tuser008@example.com,HR,active,TestGroupA;TestGroupB;TestGroupC;TestGroupD
