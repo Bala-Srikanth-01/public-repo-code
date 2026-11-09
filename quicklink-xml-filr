@@ -1,241 +1,31 @@
 <?xml version='1.0' encoding='UTF-8'?>
-<!DOCTYPE sailpoint PUBLIC "sailpoint.dtd" "sailpoint.dtd">
-<!--
-  Disable AD Accounts - QuickLink + Workflow
-  Import via: Global Settings > Import from File  (or iiq console: import Disable_AD_Accounts_QuickLink.xml)
-
-  Flow:
-    Select User form -> Get AD Accounts
-       0 accounts  -> "No accounts" message -> end
-       1 account   -> disabled directly (no selection screen)
-       2+ accounts -> Select Accounts form (all pre-selected, untick the ones to keep)
-    -> Build Plan -> LCM Provisioning (Disable) -> Result message -> end
--->
-<sailpoint>
-
-  <!-- ===================================================== -->
-  <!-- WORKFLOW                                              -->
-  <!-- ===================================================== -->
-  <Workflow explicitTransitions="true" libraries="Identity" name="Disable AD Accounts">
-
-    <!-- Run in the user's session, nothing persisted until provisioning -->
-    <Variable initializer="true" name="transient"/>
-    <Variable initializer="false" name="trace"/>
-
-    <Variable name="launcher" input="true"/>
-    <Variable name="selectedIdentity"/>   <!-- value from the identity picker (id) -->
-    <Variable name="identityName"/>       <!-- normalized identity name -->
-    <Variable name="adAccountOptions"/>   <!-- List of [linkId, label] for the form -->
-    <Variable name="adAccountCount"/>
-    <Variable name="selectedAccounts"/>   <!-- List of Link ids chosen to disable -->
-    <Variable name="plan"/>
-    <Variable name="project"/>
-    <Variable name="resultMessage"/>
-
-    <Step icon="Start" name="Start">
-      <Transition to="Select User"/>
-    </Step>
-
-    <!-- 1. Pick the user -->
-    <Step icon="Approval" name="Select User">
-      <Approval name="Select User" owner="ref:launcher" return="selectedIdentity" send="">
-        <Arg name="workItemDescription" value="string:Disable AD Accounts - select user"/>
-        <Form name="Disable AD - Select User">
-          <Attributes>
-            <Map>
-              <entry key="pageTitle" value="Disable AD Accounts"/>
-            </Map>
-          </Attributes>
-          <Button action="next" label="Next"/>
-          <Button action="cancel" label="Cancel"/>
-          <Section label="Select the user whose AD accounts should be disabled">
-            <Field displayName="User" name="selectedIdentity" required="true" type="sailpoint.object.Identity"/>
-          </Section>
-        </Form>
-      </Approval>
-      <Transition to="Get AD Accounts"/>
-    </Step>
-
-    <!-- 2. Find the user's active AD accounts -->
-    <Step icon="Task" name="Get AD Accounts">
+<!DOCTYPE DynamicScope PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<DynamicScope name="Disable AD Accounts Population">
+  <Selector>
+    <IdentitySelector>
       <Script>
         <Source><![CDATA[
-import sailpoint.object.*;
-import java.util.*;
+import sailpoint.object.Identity;
+import java.util.List;
 
-Identity identity = context.getObject(Identity.class, selectedIdentity); // accepts id or name
-List options = new ArrayList();
-List allIds  = new ArrayList();
+// Only members of this workgroup get the QuickLink
+String WORKGROUP_NAME = "Disable AD Accounts Users";
 
-if (identity != null) {
-    workflow.put("identityName", identity.getName());
-
-    List links = identity.getLinks();
-    if (links != null) {
-        for (Object o : links) {
-            Link link = (Link) o;
-            Application app = link.getApplication();
-            if (app == null || app.getType() == null) continue;
-
-            // Filter on the Application Type chosen during onboarding
-            // (Applications > Application Definition > Application Type = "Active Directory - Direct").
-            // Every app onboarded with that type is picked up automatically, whatever its name.
-            if (!"Active Directory - Direct".equals(app.getType())) continue;
-
-            // Only accounts that are not already disabled
-            if (link.isDisabled()) continue;
-
-            String acct = (link.getDisplayName() != null) ? link.getDisplayName() : link.getNativeIdentity();
-            List opt = new ArrayList();
-            opt.add(link.getId());                                   // value
-            opt.add(link.getApplicationName() + "  :  " + acct);     // label shown
-            options.add(opt);
-            allIds.add(link.getId());
-        }
-    }
+if (identity == null) return false;
+List wgs = identity.getWorkgroups();
+if (wgs == null) return false;
+for (int i = 0; i < wgs.size(); i++) {
+    Identity wg = (Identity) wgs.get(i);
+    if (wg != null && WORKGROUP_NAME.equals(wg.getName())) return true;
 }
-
-workflow.put("adAccountOptions", options);
-workflow.put("selectedAccounts", allIds);      // default = all selected
-workflow.put("adAccountCount", Integer.valueOf(allIds.size()));
+return false;
         ]]></Source>
       </Script>
-      <Transition to="No Accounts" when="script:(adAccountCount == null || adAccountCount.intValue() == 0)"/>
-      <Transition to="Build Plan" when="script:(adAccountCount.intValue() == 1)"/>
-      <Transition to="Select Accounts"/>
-    </Step>
-
-    <!-- 3a. Nothing to do -->
-    <Step icon="Approval" name="No Accounts">
-      <Approval name="No Accounts" owner="ref:launcher" send="">
-        <Arg name="identityName" value="ref:identityName"/>
-        <Form name="Disable AD - No Accounts">
-          <Attributes><Map><entry key="pageTitle" value="Disable AD Accounts"/></Map></Attributes>
-          <Button action="next" label="OK"/>
-          <Section>
-            <Field displayName="Result" name="msg" readOnly="true" type="string">
-              <Script>
-                <Source>return "User " + identityName + " has no active AD accounts to disable.";</Source>
-              </Script>
-            </Field>
-          </Section>
-        </Form>
-      </Approval>
-      <Transition to="End"/>
-    </Step>
-
-    <!-- 3b. Multiple accounts: let the requester choose -->
-    <Step icon="Approval" name="Select Accounts">
-      <Approval name="Select Accounts" owner="ref:launcher" return="selectedAccounts" send="">
-        <Arg name="adAccountOptions" value="ref:adAccountOptions"/>
-        <Arg name="identityName" value="ref:identityName"/>
-        <Form name="Disable AD - Select Accounts">
-          <Attributes><Map><entry key="pageTitle" value="Disable AD Accounts"/></Map></Attributes>
-          <Button action="next" label="Disable Selected"/>
-          <Button action="cancel" label="Cancel"/>
-          <Section label="AD accounts found - all are pre-selected, remove any you want to keep">
-            <Field displayName="User" name="userLabel" readOnly="true" type="string">
-              <Script><Source>return identityName;</Source></Script>
-            </Field>
-            <Field displayName="Accounts to disable" multi="true" name="selectedAccounts" required="true" type="string">
-              <AllowedValuesDefinition>
-                <Script><Source>return adAccountOptions;</Source></Script>
-              </AllowedValuesDefinition>
-            </Field>
-          </Section>
-        </Form>
-      </Approval>
-      <Transition to="Build Plan"/>
-    </Step>
-
-    <!-- 4. Build a Disable plan for the chosen accounts -->
-    <Step icon="Task" name="Build Plan" resultVariable="plan">
-      <Script>
-        <Source><![CDATA[
-import sailpoint.object.*;
-import sailpoint.object.ProvisioningPlan.AccountRequest;
-import java.util.*;
-
-List ids = new ArrayList();
-if (selectedAccounts instanceof Collection) ids.addAll((Collection) selectedAccounts);
-else if (selectedAccounts != null) ids.add(selectedAccounts.toString());
-
-Identity identity = context.getObjectByName(Identity.class, identityName);
-ProvisioningPlan plan = new ProvisioningPlan();
-plan.setIdentity(identity);
-
-StringBuilder sb = new StringBuilder();
-for (Object o : ids) {
-    Link link = context.getObjectById(Link.class, (String) o);
-    if (link == null) continue;
-    // safety: link must belong to the selected identity
-    if (link.getIdentity() == null || !identity.getId().equals(link.getIdentity().getId())) continue;
-
-    AccountRequest ar = new AccountRequest();
-    ar.setOperation(AccountRequest.Operation.Disable);
-    ar.setApplication(link.getApplicationName());
-    ar.setInstance(link.getInstance());
-    ar.setNativeIdentity(link.getNativeIdentity());
-    plan.add(ar);
-    sb.append("\n - ").append(link.getApplicationName()).append(" : ").append(link.getNativeIdentity());
-}
-
-workflow.put("resultMessage", "Disable request submitted for " + identityName + ":" + sb.toString()
-    + "\n\nTrack it under Manage Access > Access Requests.");
-return plan;
-        ]]></Source>
-      </Script>
-      <Transition to="Disable Accounts"/>
-    </Step>
-
-    <!-- 5. Provision through the standard LCM pipeline (audit + identity request) -->
-    <Step icon="Task" name="Disable Accounts">
-      <Arg name="identityName" value="ref:identityName"/>
-      <Arg name="plan" value="ref:plan"/>
-      <Arg name="launcher" value="ref:launcher"/>
-      <Arg name="flow" value="string:AccountsRequest"/>
-      <Arg name="source" value="string:LCM"/>
-      <Arg name="approvalScheme" value="string:none"/>
-      <Arg name="notificationScheme" value="string:none"/>
-      <Arg name="foregroundProvisioning" value="string:true"/>
-      <Arg name="trace" value="ref:trace"/>
-      <Return name="project" to="project"/>
-      <WorkflowRef>
-        <Reference class="sailpoint.object.Workflow" name="LCM Provisioning"/>
-      </WorkflowRef>
-      <Transition to="Show Result"/>
-    </Step>
-
-    <!-- 6. Confirmation -->
-    <Step icon="Approval" name="Show Result">
-      <Approval name="Show Result" owner="ref:launcher" send="">
-        <Arg name="resultMessage" value="ref:resultMessage"/>
-        <Form name="Disable AD - Result">
-          <Attributes><Map><entry key="pageTitle" value="Disable AD Accounts"/></Map></Attributes>
-          <Button action="next" label="Done"/>
-          <Section>
-            <Field displayName="Result" name="result" readOnly="true" type="string">
-              <Attributes><Map><entry key="xtype" value="textarea"/></Map></Attributes>
-              <Script><Source>return resultMessage;</Source></Script>
-            </Field>
-          </Section>
-        </Form>
-      </Approval>
-      <Transition to="End"/>
-    </Step>
-
-    <Step icon="Stop" name="End"/>
-  </Workflow>
-
-  <!-- ===================================================== -->
-  <!-- QUICKLINK                                             -->
-  <!-- ===================================================== -->
-  <QuickLink action="workflow" category="Manage" messageKey="Disable AD Accounts" name="Disable AD Accounts">
-    <Attributes>
-      <Map>
-        <entry key="workflowName" value="Disable AD Accounts"/>
-      </Map>
-    </Attributes>
-  </QuickLink>
-
-</sailpoint>
+    </IdentitySelector>
+  </Selector>
+  <QuickLinkOptions allowSelf="true">
+    <QuickLinkRef>
+      <Reference class="sailpoint.object.QuickLink" name="Disable AD Accounts"/>
+    </QuickLinkRef>
+  </QuickLinkOptions>
+</DynamicScope>
