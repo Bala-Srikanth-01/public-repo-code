@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE QuickLink PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<QuickLink action="workflow" category="Manage" messageKey="Disable AD Accounts" name="Disable AD Accounts">
+  <Attributes>
+    <Map>
+      <entry key="workflowName" value="Disable AD Accounts"/>
+    </Map>
+  </Attributes>
+</QuickLink>

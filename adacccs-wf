@@ -1,0 +1,225 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Workflow PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Workflow explicitTransitions="true" libraries="Identity" name="Disable AD Accounts">
+  <Variable initializer="true" name="transient"/>
+  <Variable initializer="false" name="trace"/>
+  <Variable input="true" name="launcher"/>
+  <Variable name="selectedIdentity"/>
+  <Variable name="identityName"/>
+  <Variable name="adAccountOptions"/>
+  <Variable name="adAccountCount"/>
+  <Variable name="selectedAccounts"/>
+  <Variable name="plan"/>
+  <Variable name="project"/>
+  <Variable name="resultMessage"/>
+  <Step icon="Start" name="Start">
+    <Transition to="Select User"/>
+  </Step>
+  <Step icon="Approval" name="Select User">
+    <Approval name="Select User" owner="ref:launcher" return="selectedIdentity" send="">
+      <Arg name="workItemDescription" value="string:Disable AD Accounts - select user"/>
+      <Form name="Disable AD - Select User">
+        <Attributes>
+          <Map>
+            <entry key="pageTitle" value="Disable AD Accounts"/>
+          </Map>
+        </Attributes>
+        <Section label="Select the user whose AD accounts should be disabled" name="userSection">
+          <Field displayName="User" name="selectedIdentity" required="true" type="sailpoint.object.Identity"/>
+        </Section>
+        <Button action="next" label="Next"/>
+        <Button action="cancel" label="Cancel"/>
+      </Form>
+    </Approval>
+    <Transition to="Get AD Accounts"/>
+  </Step>
+  <Step icon="Task" name="Get AD Accounts">
+    <Script>
+      <Source><![CDATA[
+import sailpoint.object.Identity;
+import sailpoint.object.Link;
+import sailpoint.object.Application;
+import java.util.ArrayList;
+import java.util.List;
+
+Identity identity = null;
+if (selectedIdentity != null) {
+    identity = context.getObject(Identity.class, selectedIdentity.toString());
+}
+
+List options = new ArrayList();
+List allIds = new ArrayList();
+
+if (identity != null) {
+    workflow.put("identityName", identity.getName());
+    List links = identity.getLinks();
+    if (links != null) {
+        for (int i = 0; i < links.size(); i++) {
+            Link link = (Link) links.get(i);
+            Application app = link.getApplication();
+            if (app == null) continue;
+
+            // Application Type selected during onboarding
+            if (!"Active Directory - Direct".equals(app.getType())) continue;
+
+            // Skip accounts that are already disabled
+            if (link.isDisabled()) continue;
+
+            String acct = link.getDisplayName();
+            if (acct == null) acct = link.getNativeIdentity();
+
+            List opt = new ArrayList();
+            opt.add(link.getId());
+            opt.add(link.getApplicationName() + " : " + acct);
+            options.add(opt);
+            allIds.add(link.getId());
+        }
+    }
+}
+
+workflow.put("adAccountOptions", options);
+workflow.put("selectedAccounts", allIds);
+workflow.put("adAccountCount", new Integer(allIds.size()));
+      ]]></Source>
+    </Script>
+    <Transition to="No Accounts" when="script:(adAccountCount == null || adAccountCount.intValue() == 0)"/>
+    <Transition to="Build Plan" when="script:(adAccountCount.intValue() == 1)"/>
+    <Transition to="Select Accounts"/>
+  </Step>
+  <Step icon="Approval" name="No Accounts">
+    <Approval name="No Accounts" owner="ref:launcher" send="">
+      <Arg name="identityName" value="ref:identityName"/>
+      <Form name="Disable AD - No Accounts">
+        <Attributes>
+          <Map>
+            <entry key="pageTitle" value="Disable AD Accounts"/>
+          </Map>
+        </Attributes>
+        <Section name="noAccountsSection">
+          <Field displayName="Result" name="msg" readOnly="true" type="string">
+            <Script>
+              <Source>return "User " + identityName + " has no active AD accounts to disable.";</Source>
+            </Script>
+          </Field>
+        </Section>
+        <Button action="next" label="OK"/>
+      </Form>
+    </Approval>
+    <Transition to="End"/>
+  </Step>
+  <Step icon="Approval" name="Select Accounts">
+    <Approval name="Select Accounts" owner="ref:launcher" return="selectedAccounts" send="">
+      <Arg name="adAccountOptions" value="ref:adAccountOptions"/>
+      <Arg name="identityName" value="ref:identityName"/>
+      <Form name="Disable AD - Select Accounts">
+        <Attributes>
+          <Map>
+            <entry key="pageTitle" value="Disable AD Accounts"/>
+          </Map>
+        </Attributes>
+        <Section label="AD accounts found - all are pre-selected, remove any you want to keep" name="accountsSection">
+          <Field displayName="User" name="userLabel" readOnly="true" type="string">
+            <Script>
+              <Source>return identityName;</Source>
+            </Script>
+          </Field>
+          <Field displayName="Accounts to disable" multi="true" name="selectedAccounts" required="true" type="string">
+            <AllowedValuesDefinition>
+              <Script>
+                <Source>return adAccountOptions;</Source>
+              </Script>
+            </AllowedValuesDefinition>
+          </Field>
+        </Section>
+        <Button action="next" label="Disable Selected"/>
+        <Button action="cancel" label="Cancel"/>
+      </Form>
+    </Approval>
+    <Transition to="Build Plan"/>
+  </Step>
+  <Step icon="Task" name="Build Plan" resultVariable="plan">
+    <Script>
+      <Source><![CDATA[
+import sailpoint.object.Identity;
+import sailpoint.object.Link;
+import sailpoint.object.ProvisioningPlan;
+import sailpoint.object.ProvisioningPlan.AccountRequest;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+
+List ids = new ArrayList();
+if (selectedAccounts instanceof Collection) {
+    ids.addAll((Collection) selectedAccounts);
+} else if (selectedAccounts != null) {
+    ids.add(selectedAccounts.toString());
+}
+
+Identity identity = context.getObjectByName(Identity.class, identityName);
+ProvisioningPlan plan = new ProvisioningPlan();
+plan.setIdentity(identity);
+
+String summary = "";
+for (int i = 0; i < ids.size(); i++) {
+    Link link = context.getObjectById(Link.class, ids.get(i).toString());
+    if (link == null) continue;
+
+    // Safety: the account must belong to the selected identity
+    if (link.getIdentity() == null || !identity.getId().equals(link.getIdentity().getId())) continue;
+
+    AccountRequest ar = new AccountRequest();
+    ar.setOperation(AccountRequest.Operation.Disable);
+    ar.setApplication(link.getApplicationName());
+    ar.setInstance(link.getInstance());
+    ar.setNativeIdentity(link.getNativeIdentity());
+    plan.add(ar);
+
+    if (summary.length() > 0) summary = summary + ", ";
+    summary = summary + link.getApplicationName() + " : " + link.getNativeIdentity();
+}
+
+workflow.put("resultMessage", "Disable request submitted for " + identityName + " - " + summary);
+return plan;
+      ]]></Source>
+    </Script>
+    <Transition to="Disable Accounts"/>
+  </Step>
+  <Step icon="Task" name="Disable Accounts">
+    <Arg name="identityName" value="ref:identityName"/>
+    <Arg name="plan" value="ref:plan"/>
+    <Arg name="launcher" value="ref:launcher"/>
+    <Arg name="flow" value="string:AccountsRequest"/>
+    <Arg name="source" value="string:LCM"/>
+    <Arg name="approvalScheme" value="string:none"/>
+    <Arg name="notificationScheme" value="string:none"/>
+    <Arg name="foregroundProvisioning" value="string:true"/>
+    <Arg name="trace" value="ref:trace"/>
+    <Return name="project" to="project"/>
+    <WorkflowRef>
+      <Reference class="sailpoint.object.Workflow" name="LCM Provisioning"/>
+    </WorkflowRef>
+    <Transition to="Show Result"/>
+  </Step>
+  <Step icon="Approval" name="Show Result">
+    <Approval name="Show Result" owner="ref:launcher" send="">
+      <Arg name="resultMessage" value="ref:resultMessage"/>
+      <Form name="Disable AD - Result">
+        <Attributes>
+          <Map>
+            <entry key="pageTitle" value="Disable AD Accounts"/>
+          </Map>
+        </Attributes>
+        <Section name="resultSection">
+          <Field displayName="Result" name="result" readOnly="true" type="string">
+            <Script>
+              <Source>return resultMessage;</Source>
+            </Script>
+          </Field>
+        </Section>
+        <Button action="next" label="Done"/>
+      </Form>
+    </Approval>
+    <Transition to="End"/>
+  </Step>
+  <Step icon="Stop" name="End"/>
+</Workflow>
