@@ -1,31 +1,20 @@
-<?xml version='1.0' encoding='UTF-8'?>
-<!DOCTYPE DynamicScope PUBLIC "sailpoint.dtd" "sailpoint.dtd">
-<DynamicScope name="Disable AD Accounts Population">
-  <Selector>
-    <IdentitySelector>
-      <Script>
-        <Source><![CDATA[
-import sailpoint.object.Identity;
-import java.util.List;
+import sailpoint.api.Terminator;
+import sailpoint.object.*;
 
-// Only members of this workgroup get the QuickLink
-String WORKGROUP_NAME = "Disable AD Accounts Users";
+Identity idn = context.getObjectByName(Identity.class, "PUT_IDENTITY_NAME");
+if (idn == null) { return "identity not found"; }
 
-if (identity == null) return false;
-List wgs = identity.getWorkgroups();
-if (wgs == null) return false;
-for (int i = 0; i < wgs.size(); i++) {
-    Identity wg = (Identity) wgs.get(i);
-    if (wg != null && WORKGROUP_NAME.equals(wg.getName())) return true;
+Link del = null;
+for (Object o : idn.getLinks()) {
+  Link link = (Link) o;
+  if (link.getApplicationName().indexOf("UW Platform") >= 0) {
+    del = link;
+  }
 }
-return false;
-        ]]></Source>
-      </Script>
-    </IdentitySelector>
-  </Selector>
-  <QuickLinkOptions allowSelf="true">
-    <QuickLinkRef>
-      <Reference class="sailpoint.object.QuickLink" name="Disable AD Accounts"/>
-    </QuickLinkRef>
-  </QuickLinkOptions>
-</DynamicScope>
+
+if (del == null) { return "no socotra account"; }
+
+String id = del.getNativeIdentity();
+new Terminator(context).deleteObject(del);
+context.commitTransaction();
+return "deleted socotra account " + id;
