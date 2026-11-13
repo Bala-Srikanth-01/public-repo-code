@@ -1,20 +1,3 @@
-import sailpoint.api.Terminator;
-import sailpoint.object.*;
+Socotra only gives us the user’s email (in userName). There’s no EID, so the EID checks in the standard correlation rule don’t apply. I mapped userName into AIGEMAIL to use the rule’s email check, but accounts are still being ignored, including mine, even though the username and my identity email match (bala.srikanth@aig.com). The standard rule has extra conditions (identity must be “correlated”, only one identity per email), so it’s hard to predict for this app.
 
-Identity idn = context.getObjectByName(Identity.class, "PUT_IDENTITY_NAME");
-if (idn == null) { return "identity not found"; }
-
-Link del = null;
-for (Object o : idn.getLinks()) {
-  Link link = (Link) o;
-  if (link.getApplicationName().indexOf("UW Platform") >= 0) {
-    del = link;
-  }
-}
-
-if (del == null) { return "no socotra account"; }
-
-String id = del.getNativeIdentity();
-new Terminator(context).deleteObject(del);
-context.commitTransaction();
-return "deleted socotra account " + id;
+I’d suggest we use the simple username = email correlation on the Correlation tab. It’s the same matching, has no custom code, and already worked fine in dev and QA. OK to go ahead with that?
