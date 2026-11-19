@@ -1,0 +1,18 @@
+group	roles	IAM	Group A&H UW Platform|7486|IAM
+group	roles	Resources	Group A&H UW Platform|7486|Resources
+group	roles	Read Only	Group A&H UW Platform|7486|Read Only
+group	roles	test-admin	Group A&H UW Platform|7486|test-admin
+group	roles	Underwriter	Group A&H UW Platform|7486|Underwriter
+group	roles	Compliance Admin	Group A&H UW Platform|7486|Compliance Admin
+group	roles	CI/CD	Group A&H UW Platform|7486|CI/CD
+group	roles	Developer	Group A&H UW Platform|7486|Developer
+group	roles	Functional User	Group A&H UW Platform|7486|Functional User
+group	roles	readOnly	Group A&H UW Platform|7486|readOnly
+group	roles	admin	Group A&H UW Platform|7486|admin
+group	roles	Policy Shell Import	Group A&H UW Platform|7486|Policy Shell Import
+group	roles	ChargeLedgerViewRole	Group A&H UW Platform|7486|ChargeLedgerViewRole
+group	roles	Resources-test	Group A&H UW Platform|7486|Resources-test
+group	roles	Read Only (w/o association.*)	Group A&H UW Platform|7486|Read Only (w/o association.*)
+group	roles	Servicing	Group A&H UW Platform|7486|Servicing
+group	roles	Quote Preparation and Issuance	Group A&H UW Platform|7486|Quote Preparation and Issuance
+group	roles	System Admin	Group A&H UW Platform|7486|System Admin
