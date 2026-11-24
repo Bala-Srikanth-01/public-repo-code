@@ -1,0 +1,48 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Rule PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Rule language="beanshell" name="AIG-Rule-IdentitySelector-Group-AH-UW-Platform-Okta-SSO" type="IdentitySelector">
+  <Description>Assigns the Socotra Okta SSO role to users who have an active Socotra account with roles and an active Okta account.</Description>
+  <Source><![CDATA[
+  import sailpoint.object.Application;
+  import sailpoint.object.Link;
+  import sailpoint.api.IdentityService;
+  import sailpoint.tools.Util;
+  import java.util.List;
+
+  IdentityService idServ = new IdentityService(context);
+
+  // Socotra application (QA/prod name first, dev name as fallback)
+  Application appObj = context.getObjectByName(Application.class, "Group A&H UW Platform [7486]");
+  if (appObj == null) { appObj = context.getObjectByName(Application.class, "Group A&H UW Platform"); }
+  if (appObj == null) { return false; }
+
+  // 1. user has an active Socotra account with at least one role
+  boolean assignRole = false;
+  List appObjLinks = idServ.getLinks(identity, appObj);
+  if (!Util.isEmpty(appObjLinks)) {
+    for (Link appLink : appObjLinks) {
+      if (!appLink.isDisabled() && !Util.isEmpty(Util.asList(appLink.getAttribute("roles")))) {
+        assignRole = true;
+        break;
+      }
+    }
+  }
+
+  // 2. user has an active Okta account
+  boolean hasActiveOkta = false;
+  Application appObjOkta = context.getObjectByName(Application.class, "Okta");
+  if (appObjOkta != null) {
+    List appObjLinksOkta = idServ.getLinks(identity, appObjOkta);
+    if (!Util.isEmpty(appObjLinksOkta)) {
+      for (Link eachOktaLink : appObjLinksOkta) {
+        if (!eachOktaLink.isDisabled()) {
+          hasActiveOkta = true;
+          break;
+        }
+      }
+    }
+  }
+
+  return assignRole && hasActiveOkta;
+  ]]></Source>
+</Rule>
