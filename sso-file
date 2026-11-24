@@ -1,16 +1,29 @@
-import sailpoint.object.*;
-import java.util.*;
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Rule PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Rule language="beanshell" name="Check-Socotra-Okta-Selector">
+  <Source><![CDATA[
+  import sailpoint.object.*;
+  import java.util.*;
 
-Identity idn = context.getObjectByName(Identity.class, "PUT_YOUR_IDENTITY_NAME");
+  String IDENTITY = "PUT_YOUR_IDENTITY_NAME";
 
-String apps = "";
-for (Object o : idn.getLinks()) {
-  Link l = (Link) o;
-  apps = apps + l.getApplicationName() + " | disabled=" + l.isDisabled() + "\n";
-}
+  Identity idn = context.getObjectByName(Identity.class, IDENTITY);
+  if (idn == null) { return "Identity not found - check the name"; }
 
-Rule r = context.getObjectByName(Rule.class, "AIG-Rule-IdentitySelector-Group-AH-UW-Platform-Okta-SSO");
-Map args = new HashMap();
-args.put("identity", idn);
+  // list all accounts of this identity
+  String apps = "";
+  for (Object o : idn.getLinks()) {
+    Link l = (Link) o;
+    apps = apps + l.getApplicationName() + " | disabled=" + l.isDisabled() + "\n";
+  }
 
-return "YOUR ACCOUNTS:\n" + apps + "\nRULE RETURNS: " + context.runRule(r, args);
+  // run the selector rule for this identity
+  Rule r = context.getObjectByName(Rule.class, "AIG-Rule-IdentitySelector-Group-AH-UW-Platform-Okta-SSO");
+  if (r == null) { return "YOUR ACCOUNTS:\n" + apps + "\nSelector rule not found - check its name"; }
+
+  Map args = new HashMap();
+  args.put("identity", idn);
+
+  return "YOUR ACCOUNTS:\n" + apps + "\nRULE RETURNS: " + context.runRule(r, args);
+  ]]></Source>
+</Rule>
