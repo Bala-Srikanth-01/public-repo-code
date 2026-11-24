@@ -16,33 +16,45 @@
   if (appObj == null) { appObj = context.getObjectByName(Application.class, "Group A&H UW Platform"); }
   if (appObj == null) { return false; }
 
-  // 1. user has an active Socotra account with at least one role
-  boolean assignRole = false;
   List appObjLinks = idServ.getLinks(identity, appObj);
-  if (!Util.isEmpty(appObjLinks)) {
-    for (Link appLink : appObjLinks) {
-      if (!appLink.isDisabled() && !Util.isEmpty(Util.asList(appLink.getAttribute("roles")))) {
+  boolean assignRole = false;
+
+  // user has an active Socotra account with roles
+  if (!Util.isEmpty(appObjLinks))
+  {
+    for (Link appLink : appObjLinks)
+    {
+      if (!appLink.isDisabled() && null != appLink.getAttribute("roles"))
+      {
         assignRole = true;
         break;
       }
     }
   }
 
-  // 2. user has an active Okta account
-  boolean hasActiveOkta = false;
   Application appObjOkta = context.getObjectByName(Application.class, "Okta");
-  if (appObjOkta != null) {
-    List appObjLinksOkta = idServ.getLinks(identity, appObjOkta);
-    if (!Util.isEmpty(appObjLinksOkta)) {
-      for (Link eachOktaLink : appObjLinksOkta) {
-        if (!eachOktaLink.isDisabled()) {
-          hasActiveOkta = true;
-          break;
-        }
+  List appObjLinksOkta = idServ.getLinks(identity, appObjOkta);
+  boolean hasActiveOkta = false;
+
+  // user has an active Okta account
+  if (null != appObjLinksOkta && appObjLinksOkta.size() > 0)
+  {
+    for (Link eachOktaLink : appObjLinksOkta)
+    {
+      if (!eachOktaLink.isDisabled())
+      {
+        hasActiveOkta = true;
+        break;
       }
     }
   }
 
-  return assignRole && hasActiveOkta;
+  boolean assignRoleFlag = false;
+  if (assignRole && hasActiveOkta)
+  {
+    assignRoleFlag = true;
+  }
+
+  return assignRoleFlag;
   ]]></Source>
 </Rule>
