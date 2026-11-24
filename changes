@@ -1,1 +1,95 @@
-String APP = (application != void && application != null) ? application.getName() : "Group A&H UW Platform [7486]";
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Rule PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Rule language="beanshell" name="Socotra-AfterProvisioning-SetNativeIdentity" type="AfterProvisioning">
+  <Description>After a Socotra Create: sets the locator as the account's native identity (Account ID). Credentials email removed.</Description>
+  <Source><![CDATA[
+  import sailpoint.api.SailPointContext;
+  import sailpoint.api.SailPointFactory;
+  import sailpoint.object.*;
+  import sailpoint.object.ProvisioningPlan.AccountRequest;
+  import sailpoint.object.ProvisioningPlan.AttributeRequest;
+  import java.util.*;
+
+  // CHANGED: name of the application this rule is attached to (works in dev, QA and prod)
+  // OLD: String APP = "Group A&H UW Platform";
+  String APP = (application != void && application != null) ? application.getName() : "Group A&H UW Platform [7486]";
+
+  // REMOVED (email):
+  // String TEMPLATE = "AIG-EmailTemplate-Socotra-NewAccount";
+
+  List logs = new ArrayList();
+
+  SailPointContext pctx = null;
+  try {
+    pctx = SailPointFactory.createPrivateContext();
+    Custom locMap = pctx.getObjectByName(Custom.class, "Socotra_LocatorMap");
+
+    // REMOVED (email):
+    // Custom pwMap  = pctx.getObjectByName(Custom.class, "Socotra_PendingPassword");
+
+    Identity idn  = (plan != null) ? plan.getIdentity() : null;
+    List ars = (plan != null && plan.getAccountRequests() != null) ? plan.getAccountRequests() : new ArrayList();
+
+    for (Object o : ars) {
+      AccountRequest ar = (AccountRequest) o;
+      if (!APP.equals(ar.getApplicationName()) || !"Create".equals("" + ar.getOperation())) { continue; }
+
+      // userName from the plan, else the identity email
+      AttributeRequest unReq = ar.getAttributeRequest("userName");
+      String userName = (unReq != null && unReq.getValue() != null) ? "" + unReq.getValue()
+                      : ((idn != null) ? idn.getEmail() : null);
+      if (userName != null) { userName = userName.trim().toLowerCase(); }
+
+      // set native identity = Socotra locator (from the result, else from the saved map)
+      String locator = ar.getNativeIdentity();
+      ProvisioningResult res = ar.getResult();
+      if (locator == null && res != null && res.getObject() != null && res.getObject().getAttribute("locator") != null) {
+        locator = "" + res.getObject().getAttribute("locator");
+      }
+      if (locator == null && locMap != null && userName != null && locMap.get(userName) != null) {
+        locator = "" + locMap.get(userName);
+      }
+      if (locator != null) { ar.setNativeIdentity(locator); }
+      if (locMap != null && userName != null) { locMap.remove(userName); }
+      logs.add(new Date() + " | userName=" + userName + " | locator=" + locator);
+
+      // REMOVED (email): the whole "send the credentials email" block
+      // if (locator == null) {
+      //   logs.add("locator NOT found - create may have failed, no email sent");
+      //   continue;
+      // }
+      // Object encPw = (pwMap != null && userName != null) ? pwMap.get(userName) : null;
+      // if (locator != null && encPw != null) {
+      //   try {
+      //     Map args = new HashMap();
+      //     args.put("appName", APP);
+      //     args.put("UserName", userName);
+      //     args.put("UserPassword", context.decrypt("" + encPw));
+      //     String to = (idn != null && idn.getEmail() != null) ? idn.getEmail() : userName;
+      //     context.sendEmailNotification(context.getObjectByName(EmailTemplate.class, TEMPLATE), new EmailOptions(to, args));
+      //     logs.add("email sent to " + to);
+      //   } catch (Exception e) {
+      //     logs.add("EMAIL ERROR " + e);
+      //   }
+      // } else {
+      //   logs.add("no email (locator=" + locator + ", password saved=" + (encPw != null) + ")");
+      // }
+      // if (pwMap != null && userName != null) { pwMap.remove(userName); }
+    }
+
+    if (locMap != null) { pctx.saveObject(locMap); }
+
+    // REMOVED (email):
+    // if (pwMap != null) { pctx.saveObject(pwMap); }
+
+    Custom c = pctx.getObjectByName(Custom.class, "RuleDebugLog_Socotra_AfterProv");
+    if (c == null) { c = new Custom(); c.setName("RuleDebugLog_Socotra_AfterProv"); }
+    c.put("entries", logs);
+    pctx.saveObject(c);
+    pctx.commitTransaction();
+  } catch (Exception e) {
+  } finally {
+    if (pctx != null) { try { SailPointFactory.releasePrivateContext(pctx); } catch (Exception e2) { } }
+  }
+  ]]></Source>
+</Rule>
