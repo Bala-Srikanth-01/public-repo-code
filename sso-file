@@ -1,60 +1,16 @@
-<?xml version='1.0' encoding='UTF-8'?>
-<!DOCTYPE Rule PUBLIC "sailpoint.dtd" "sailpoint.dtd">
-<Rule language="beanshell" name="AIG-Rule-IdentitySelector-Group-AH-UW-Platform-Okta-SSO" type="IdentitySelector">
-  <Description>Assigns the Socotra Okta SSO role to users who have an active Socotra account with roles and an active Okta account.</Description>
-  <Source><![CDATA[
-  import sailpoint.object.Application;
-  import sailpoint.object.Link;
-  import sailpoint.api.IdentityService;
-  import sailpoint.tools.Util;
-  import java.util.List;
+import sailpoint.object.*;
+import java.util.*;
 
-  IdentityService idServ = new IdentityService(context);
+Identity idn = context.getObjectByName(Identity.class, "PUT_YOUR_IDENTITY_NAME");
 
-  // Socotra application (QA/prod name first, dev name as fallback)
-  Application appObj = context.getObjectByName(Application.class, "Group A&H UW Platform [7486]");
-  if (appObj == null) { appObj = context.getObjectByName(Application.class, "Group A&H UW Platform"); }
-  if (appObj == null) { return false; }
+String apps = "";
+for (Object o : idn.getLinks()) {
+  Link l = (Link) o;
+  apps = apps + l.getApplicationName() + " | disabled=" + l.isDisabled() + "\n";
+}
 
-  List appObjLinks = idServ.getLinks(identity, appObj);
-  boolean assignRole = false;
+Rule r = context.getObjectByName(Rule.class, "AIG-Rule-IdentitySelector-Group-AH-UW-Platform-Okta-SSO");
+Map args = new HashMap();
+args.put("identity", idn);
 
-  // user has an active Socotra account with roles
-  if (!Util.isEmpty(appObjLinks))
-  {
-    for (Link appLink : appObjLinks)
-    {
-      if (!appLink.isDisabled() && null != appLink.getAttribute("roles"))
-      {
-        assignRole = true;
-        break;
-      }
-    }
-  }
-
-  Application appObjOkta = context.getObjectByName(Application.class, "Okta");
-  List appObjLinksOkta = idServ.getLinks(identity, appObjOkta);
-  boolean hasActiveOkta = false;
-
-  // user has an active Okta account
-  if (null != appObjLinksOkta && appObjLinksOkta.size() > 0)
-  {
-    for (Link eachOktaLink : appObjLinksOkta)
-    {
-      if (!eachOktaLink.isDisabled())
-      {
-        hasActiveOkta = true;
-        break;
-      }
-    }
-  }
-
-  boolean assignRoleFlag = false;
-  if (assignRole && hasActiveOkta)
-  {
-    assignRoleFlag = true;
-  }
-
-  return assignRoleFlag;
-  ]]></Source>
-</Rule>
+return "YOUR ACCOUNTS:\n" + apps + "\nRULE RETURNS: " + context.runRule(r, args);
