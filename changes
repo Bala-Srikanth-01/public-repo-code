@@ -1,0 +1,1 @@
+String APP = (application != void && application != null) ? application.getName() : "Group A&H UW Platform [7486]";
